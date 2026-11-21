@@ -9,7 +9,7 @@ Route new, locally initiated IPv4 connections from a Linux host through a WireGu
 On Debian/Ubuntu with systemd, paste this single line as a user with `sudo` access:
 
 ```sh
-bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.1; pkg=wgtun-v0.1.1.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.1/install.sh'
+bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.2; pkg=wgtun-v0.1.2.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.2/install.sh'
 ```
 
 This installs dependencies, verifies and extracts the release, and installs `wgtun`. Existing config is preserved. The service stays off until you configure your endpoint and start it.
@@ -20,7 +20,13 @@ This installs dependencies, verifies and extracts the release, and installs `wgt
 2. On the client, generate a separate WireGuard keypair per host (`wg genkey` and `wg pubkey`); keep private keys local. Edit `/etc/wireguard/wgtun0.conf` with `sudoedit`. Replace sample keys and `203.0.113.10:51820` with your VPS public endpoint. Keep file mode `0600`, `Table = off`, and peer `AllowedIPs = 0.0.0.0/0`. Omit DNS, hooks, FwMark, and SaveConfig.
 3. Keep console access. Start `sudo wgtun on`, check `sudo wgtun status` and `sudo wg show wgtun0`, then make a fresh IPv4 request to an IP-check service and verify it reports your VPS public IP. Check inbound SSH separately before boot enablement: `sudo systemctl enable wgtun.service`. Service status alone does not prove handshake or connectivity.
 
+## DNS through WireGuard
+
+On hosts using `systemd-resolved` and its local stub for system DNS, put one public IPv4 resolver (for example `1.1.1.1`) in `/etc/wireguard/wgtun-dns` and run `sudo wgtun restart`. This sets the tunnel's DNS routing domain to `~.`. Other links with equally or more specific domains can still receive requests; applications with their own resolvers can bypass this setting. This is not DNS leak protection. Remove the file and restart to disable it. DNS routing also reserves rule priority `10589`.
+
 ## Operations
+
+- `sudo wgtun status` and `sudo wgtun test` report the latest handshake and observed host IPv4 using `https://api.ipify.org`. `sudo wgtun on` runs the same probe after startup. Compare the reported IPv4 with your VPS address; a successful probe alone does not prove the tunnel is in use.
 
 - `sudo wgtun off`: remove policy and restore direct egress for new flows.
 - `sudo wgtun restart`: reload edited config; existing connections can break during restart.

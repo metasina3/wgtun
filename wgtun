@@ -13,6 +13,12 @@ die() { printf '%s\n' "$*" >&2; exit 1; }
 rule() { ip -4 rule "$1" pref "$priority" fwmark "$mark/$mark" lookup "$table"; }
 cleanup() {
   local rc=0
+  if ip link show dev "$iface" >/dev/null 2>&1; then
+    resolvectl revert "$iface" 2>/dev/null || true
+  fi
+  if ip -4 rule show pref 10589 | grep -Fq "oif $iface lookup $table"; then
+    ip -4 rule del pref 10589 oif "$iface" lookup "$table" || rc=1
+  fi
   if ipt -t mangle -C OUTPUT -j "$chain" 2>/dev/null; then ipt -t mangle -D OUTPUT -j "$chain" || rc=1; fi
   if ipt -t mangle -S "$chain" >/dev/null 2>&1; then
     ipt -t mangle -F "$chain" && ipt -t mangle -X "$chain" || rc=1
@@ -71,16 +77,49 @@ up() {
   ipt -t mangle -A "$chain" -m connmark --mark "$mark/$mark" -j MARK --set-xmark "$mark/$mark"
   rule add
   ipt -t mangle -A OUTPUT -j "$chain"
+  if [[ -e /etc/wireguard/wgtun-dns ]]; then
+    local dns
+    dns=$(< /etc/wireguard/wgtun-dns)
+    [[ $dns =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die 'wgtun-dns must contain one public IPv4 resolver.'
+    local prefix a b c d x y z w bits value base route
+    IFS=. read -r a b c d <<< "$dns"
+    (( 10#$a <= 255 && 10#$b <= 255 && 10#$c <= 255 && 10#$d <= 255 )) || die 'Invalid DNS IPv4 address.'
+    route=$(ip -4 route get "$dns")
+    [[ $route != local\ * ]] || die 'DNS resolver must not be a local address.'
+    value=$((10#$a<<24 | 10#$b<<16 | 10#$c<<8 | 10#$d))
+    for prefix in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/3; do
+      IFS='./' read -r x y z w bits <<< "$prefix"
+      base=$((x<<24 | y<<16 | z<<8 | w))
+      if (( value >> (32-bits) == base >> (32-bits) )); then die 'DNS resolver falls in a direct-routing range.'; fi
+    done
+    route=$(ip -4 route get "$dns" mark "$mark")
+    [[ " $route " == *" dev $iface "* ]] || die 'DNS resolver does not route through wgtun.'
+    [[ -z $(ip -4 rule show pref 10589) ]] || die 'DNS routing priority occupied.'
+    ip -4 rule add pref 10589 oif "$iface" lookup "$table"
+    resolvectl dns "$iface" "$dns"
+    resolvectl domain "$iface" '~.'
+  fi
   trap - EXIT
 }
+probe() {
+  local hs ipaddr age=-1
+  ipaddr=$(curl -q -4fsS --noproxy '*' --max-time 8 https://api.ipify.org) || ipaddr=
+  hs=$(wg show "$iface" latest-handshakes 2>/dev/null | awk '$2>max{max=$2} END{print max+0}') || hs=0
+  if ((hs > 0)); then age=$(( $(date +%s) - hs )); fi
+  if ((age >= 0)); then printf 'Last WireGuard handshake: %ss ago\n' "$age"; else printf 'Last WireGuard handshake: none\n'; fi
+  [[ -n $ipaddr ]] || { printf 'Host IPv4 egress: unavailable\n'; return 1; }
+  printf 'Host IPv4 egress: %s\n' "$ipaddr"
+  printf 'Compare this address with your egress VPS public IPv4.\n'
+}
 case ${1:-status} in
-  on) exec systemctl start "$service" ;;
+  on) systemctl start "$service"; probe ;;
   off) exec systemctl stop "$service" ;;
   restart) exec systemctl restart "$service" ;;
-  status) exec systemctl --no-pager status "$service" ;;
+  status) systemctl --no-pager status "$service" || true; probe ;;
+  test) probe ;;
   check-config) validate_config "${2:-$config}" ;;
   _up) up ;;
   _down) cleanup ;;
-  -h|--help) printf 'Usage: wgtun [on|off|restart|status|check-config [file]]\n' ;;
+  -h|--help) printf 'Usage: wgtun [on|off|restart|status|test|check-config [file]]\n' ;;
   *) exit 2 ;;
 esac

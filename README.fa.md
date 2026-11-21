@@ -9,7 +9,7 @@
 روی Debian/Ubuntu با systemd، این یک خط را با حسابی که دسترسی `sudo` دارد اجرا کنید:
 
 ```sh
-bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.1; pkg=wgtun-v0.1.1.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.1/install.sh'
+bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.2; pkg=wgtun-v0.1.2.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.2/install.sh'
 ```
 
 این دستور پیش‌نیازها را نصب می‌کند، فایل ریلیز را می‌گیرد، SHA-256 را بررسی می‌کند و `wgtun` را نصب می‌کند. کانفیگ موجود دست‌نخورده می‌ماند. سرویس تا تنظیم اندپوینت و اجرای دستور راه‌اندازی خاموش می‌ماند.
@@ -19,6 +19,10 @@ bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates c
 1. روی VPS خروجی، WireGuard را مثلاً با آدرس `10.77.0.1/24` و پورت UDP `51820` تنظیم کنید. پورت را در فایروال باز کنید و کلید عمومی کلاینت را با `AllowedIPs = 10.77.0.2/32` اضافه کنید. `net.ipv4.ip_forward=1` را پایدار فعال کنید. در فایروال موجود، فوروارد از WireGuard به رابط عمومی، بازگشت ترافیک established/related و masquerade شبکهٔ تونل روی رابط عمومی را تنظیم کنید.
 2. روی کلاینت یک جفت کلید مستقل با `wg genkey` و `wg pubkey` بسازید. در `/etc/wireguard/wgtun0.conf` کلیدهای نمونه و `203.0.113.10:51820` را جایگزین کنید. کلید خصوصی را منتشر نکنید. مجوز `0600`، گزینهٔ `Table = off` و `AllowedIPs = 0.0.0.0/0` را نگه دارید. تنظیمات DNS، hook، FwMark و SaveConfig اضافه نکنید.
 3. دسترسی کنسول را باز نگه دارید. `sudo wgtun on`، `sudo wgtun status` و `sudo wg show wgtun0` را اجرا کنید. از یک اتصال تازهٔ IPv4 بررسی کنید که IP خروجی، IP عمومی VPS است. SSH ورودی را جداگانه بررسی کنید؛ بعد با `sudo systemctl enable wgtun.service` راه‌اندازی هنگام بوت را فعال کنید. فعال‌بودن سرویس به‌تنهایی نشانهٔ اتصال نیست.
+
+`sudo wgtun on`، `sudo wgtun status` و `sudo wgtun test` زمان آخرین handshake و IPv4 خروجی را نشان می‌دهند. IP را با آدرس عمومی VPS مقایسه کنید.
+
+برای DNS، اگر میزبان از stub محلی `systemd-resolved` استفاده می‌کند، یک IPv4 عمومی مثل `1.1.1.1` را در `/etc/wireguard/wgtun-dns` بگذارید و `sudo wgtun restart` بزنید. برنامه‌هایی با DNS مستقل و دامنه‌های اختصاصی روی رابط‌های دیگر ممکن است از این تنظیم پیروی نکنند. این گزینه جلوگیری قطعی از نشت DNS نیست. برای غیرفعال کردن، فایل را حذف و سرویس را restart کنید.
 
 برای توقف `sudo wgtun off`، برای بارگذاری مجدد `sudo wgtun restart` و برای لاگ `sudo journalctl -u wgtun.service` را اجرا کنید. برای حذف، اول `sudo systemctl disable --now wgtun.service` را اجرا کنید، سپس `/usr/local/sbin/wgtun` و `/etc/systemd/system/wgtun.service` را حذف کنید و `sudo systemctl daemon-reload` را اجرا کنید. کانفیگ جدا می‌ماند.
 
