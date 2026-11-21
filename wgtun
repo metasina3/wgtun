@@ -24,14 +24,31 @@ cleanup() {
   if ip link show dev "$iface" >/dev/null 2>&1; then wg-quick down "$config" || rc=1; fi
   return "$rc"
 }
+validate_config() {
+  awk '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function err(msg) { print msg > "/dev/stderr"; bad=1 }
+    {
+      sub(/#.*/, ""); line=trim($0)
+      if (line ~ /^\[.*\]$/) { section=tolower(line); next }
+      pos=index(line,"="); if (!pos) next
+      key=tolower(trim(substr(line,1,pos-1)))
+      if (key=="table") {
+        if (section!="[interface]") err("Line " NR ": Table belongs in [Interface].")
+        else if (++tables>1) err("Line " NR ": duplicate Table directive.")
+        if (tolower(trim(substr(line,pos+1)))!="off") err("Line " NR ": set Table = off.")
+      }
+      if (key ~ /^(dns|preup|postup|predown|postdown|saveconfig|fwmark)$/)
+        err("Line " NR ": remove unsupported directive " key ".")
+    }
+    END { if (!tables) err("Add Table = off under [Interface]."); exit bad ? 1 : 0 }
+  ' "$1"
+}
 up() {
   [[ -f $config ]] || die "Missing $config"
   # Do not let wg-quick alter default routes, resolver settings, or run hooks.
-  awk -F= '
-    {sub(/#.*/, ""); key=tolower($1); gsub(/[[:space:]]/, "", key)}
-    key ~ /^(dns|preup|postup|predown|postdown|saveconfig|fwmark)$/ {bad=1}
-    key=="table" {v=tolower($2); gsub(/[[:space:]]/, "", v); count++; if(v!="off") bad=1}
-    END {exit !(count==1 && !bad)}' "$config" || die 'Use Table = off exactly once; omit DNS, FwMark, hooks and SaveConfig.'
+  validate_config "$config" || die "Fix $config before starting wgtun."
+
   if ip link show dev "$iface" >/dev/null 2>&1 || ipt -t mangle -S "$chain" >/dev/null 2>&1; then die 'Interface or firewall chain already exists'; fi
   [[ -z $(ip -4 rule show pref "$priority") ]] || die 'Routing priority occupied'
   local routes
@@ -61,8 +78,9 @@ case ${1:-status} in
   off) exec systemctl stop "$service" ;;
   restart) exec systemctl restart "$service" ;;
   status) exec systemctl --no-pager status "$service" ;;
+  check-config) validate_config "${2:-$config}" ;;
   _up) up ;;
   _down) cleanup ;;
-  -h|--help) printf 'Usage: wgtun [on|off|restart|status]\n' ;;
+  -h|--help) printf 'Usage: wgtun [on|off|restart|status|check-config [file]]\n' ;;
   *) exit 2 ;;
 esac

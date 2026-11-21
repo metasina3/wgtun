@@ -9,7 +9,7 @@
 روی Debian/Ubuntu با systemd، این یک خط را با حسابی که دسترسی `sudo` دارد اجرا کنید:
 
 ```sh
-bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.0; pkg=wgtun-v0.1.0.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.0/install.sh'
+bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.1; pkg=wgtun-v0.1.1.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.1/install.sh'
 ```
 
 این دستور پیش‌نیازها را نصب می‌کند، فایل ریلیز را می‌گیرد، SHA-256 را بررسی می‌کند و `wgtun` را نصب می‌کند. کانفیگ موجود دست‌نخورده می‌ماند. سرویس تا تنظیم اندپوینت و اجرای دستور راه‌اندازی خاموش می‌ماند.
