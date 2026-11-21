@@ -6,13 +6,13 @@ Route new, locally initiated IPv4 connections from a Linux host through a WireGu
 
 ## Quick install
 
-On Debian/Ubuntu with systemd:
+On Debian/Ubuntu with systemd, paste this single line as a user with `sudo` access:
 
 ```sh
-sudo apt-get install wireguard-tools iproute2 iptables
+bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.0; pkg=wgtun-v0.1.0.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.0/install.sh'
 ```
 
-Download and verify the archive and SHA-256 checksum from [Releases](../../releases), extract it, and run `sudo bash install.sh` inside the extracted directory. The installer does not start or enable the service and preserves existing config.
+This installs dependencies, verifies and extracts the release, and installs `wgtun`. Existing config is preserved. The service stays off until you configure your endpoint and start it.
 
 ## Configuration
 

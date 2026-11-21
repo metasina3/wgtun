@@ -6,7 +6,13 @@
 
 ## نصب سریع
 
-روی Debian/Ubuntu با systemd، `sudo apt-get install wireguard-tools iproute2 iptables` را اجرا کنید. آرشیو و فایل SHA-256 را از [ریلیزها](../../releases) بگیرید، هش را بررسی کنید، آرشیو را باز کنید و داخل پوشهٔ استخراج‌شده `sudo bash install.sh` را اجرا کنید. نصب‌کننده سرویس را روشن یا فعال نمی‌کند و کانفیگ موجود را نگه می‌دارد.
+روی Debian/Ubuntu با systemd، این یک خط را با حسابی که دسترسی `sudo` دارد اجرا کنید:
+
+```sh
+bash -c 'set -eu; sudo apt-get update; sudo apt-get install -y ca-certificates curl tar wireguard-tools iproute2 iptables; d=$(mktemp -d); trap "rm -rf -- \"$d\"" EXIT; cd "$d"; url=https://github.com/metasina3/wgtun/releases/download/v0.1.0; pkg=wgtun-v0.1.0.tar.gz; curl -fsSL -O "$url/$pkg" -O "$url/$pkg.sha256"; sha256sum -c "$pkg.sha256"; tar -xzf "$pkg"; sudo bash wgtun-v0.1.0/install.sh'
+```
+
+این دستور پیش‌نیازها را نصب می‌کند، فایل ریلیز را می‌گیرد، SHA-256 را بررسی می‌کند و `wgtun` را نصب می‌کند. کانفیگ موجود دست‌نخورده می‌ماند. سرویس تا تنظیم اندپوینت و اجرای دستور راه‌اندازی خاموش می‌ماند.
 
 ## کانفیگ
 
