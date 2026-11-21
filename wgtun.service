@@ -1,0 +1,13 @@
+[Unit]
+Description=WireGuard host IPv4 egress policy
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/wgtun _up
+ExecStop=/usr/local/sbin/wgtun _down
+
+[Install]
+WantedBy=multi-user.target

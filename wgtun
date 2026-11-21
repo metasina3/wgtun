@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+iface=wgtun0
+config=/etc/wireguard/$iface.conf
+chain=WGTUN_OUTPUT
+service=wgtun.service
+mark=0x40000000
+outer=0x20000000
+table=51888
+priority=10588
+ipt() { iptables -w 5 "$@"; }
+die() { printf '%s\n' "$*" >&2; exit 1; }
+rule() { ip -4 rule "$1" pref "$priority" fwmark "$mark/$mark" lookup "$table"; }
+cleanup() {
+  local rc=0
+  if ipt -t mangle -C OUTPUT -j "$chain" 2>/dev/null; then ipt -t mangle -D OUTPUT -j "$chain" || rc=1; fi
+  if ipt -t mangle -S "$chain" >/dev/null 2>&1; then
+    ipt -t mangle -F "$chain" && ipt -t mangle -X "$chain" || rc=1
+  fi
+  if ipt -t nat -C POSTROUTING -o "$iface" -m mark --mark "$mark/$mark" -j MASQUERADE 2>/dev/null; then
+    ipt -t nat -D POSTROUTING -o "$iface" -m mark --mark "$mark/$mark" -j MASQUERADE || rc=1
+  fi
+  if ip -4 rule show pref "$priority" | grep -Fq "fwmark $mark/$mark lookup $table"; then rule del || rc=1; fi
+  if ip link show dev "$iface" >/dev/null 2>&1; then wg-quick down "$config" || rc=1; fi
+  return "$rc"
+}
+up() {
+  [[ -f $config ]] || die "Missing $config"
+  # Do not let wg-quick alter default routes, resolver settings, or run hooks.
+  awk -F= '
+    {sub(/#.*/, ""); key=tolower($1); gsub(/[[:space:]]/, "", key)}
+    key ~ /^(dns|preup|postup|predown|postdown|saveconfig|fwmark)$/ {bad=1}
+    key=="table" {v=tolower($2); gsub(/[[:space:]]/, "", v); count++; if(v!="off") bad=1}
+    END {exit !(count==1 && !bad)}' "$config" || die 'Use Table = off exactly once; omit DNS, FwMark, hooks and SaveConfig.'
+  if ip link show dev "$iface" >/dev/null 2>&1 || ipt -t mangle -S "$chain" >/dev/null 2>&1; then die 'Interface or firewall chain already exists'; fi
+  [[ -z $(ip -4 rule show pref "$priority") ]] || die 'Routing priority occupied'
+  local routes
+  routes=$(ip -4 route show table "$table" 2>/dev/null || true)
+  [[ -z $routes ]] || die 'Routing table occupied'
+  trap 'rc=$?; if ((rc)); then cleanup || printf "Rollback incomplete\n" >&2; fi' EXIT
+  wg-quick up "$config"
+  wg set "$iface" fwmark "$outer"
+  ip -4 route add default dev "$iface" table "$table"
+  ipt -t nat -A POSTROUTING -o "$iface" -m mark --mark "$mark/$mark" -j MASQUERADE
+  ipt -t mangle -N "$chain"
+  ipt -t mangle -A "$chain" -m mark --mark "$outer/$outer" -j RETURN
+  ipt -t mangle -A "$chain" -m addrtype --dst-type LOCAL -j RETURN
+  local net
+  for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/3; do
+    ipt -t mangle -A "$chain" -d "$net" -j RETURN
+  done
+  ipt -t mangle -A "$chain" -m conntrack --ctdir REPLY -j RETURN
+  ipt -t mangle -A "$chain" -m conntrack --ctstate NEW -j CONNMARK --set-xmark "$mark/$mark"
+  ipt -t mangle -A "$chain" -m connmark --mark "$mark/$mark" -j MARK --set-xmark "$mark/$mark"
+  rule add
+  ipt -t mangle -A OUTPUT -j "$chain"
+  trap - EXIT
+}
+case ${1:-status} in
+  on) exec systemctl start "$service" ;;
+  off) exec systemctl stop "$service" ;;
+  restart) exec systemctl restart "$service" ;;
+  status) exec systemctl --no-pager status "$service" ;;
+  _up) up ;;
+  _down) cleanup ;;
+  -h|--help) printf 'Usage: wgtun [on|off|restart|status]\n' ;;
+  *) exit 2 ;;
+esac
